@@ -8,7 +8,7 @@ import shutil
 app = Flask(__name__)
 CORS(app)
 
-# BULUT İÇİN GEÇİCİ KLASÖR (Önemli: /tmp olmalı)
+# BULUT İÇİN GEÇİCİ KLASÖR
 DOWNLOAD_FOLDER = '/tmp/downloads'
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
@@ -18,7 +18,6 @@ def get_ffmpeg_path():
 
 @app.route('/')
 def home():
-    # index.html dosyasını templates klasöründen çağırır
     return render_template('index.html')
 
 @app.route('/download', methods=['POST'])
@@ -32,7 +31,7 @@ def download_video():
 
     print(f"☁️ Bulut İndirme Başlıyor: {url}")
     
-    # Temizlik (Disk dolmasın)
+    # Temizlik
     for f in os.listdir(DOWNLOAD_FOLDER):
         try:
             os.remove(os.path.join(DOWNLOAD_FOLDER, f))
@@ -45,14 +44,15 @@ def download_video():
     ffmpeg_loc = get_ffmpeg_path()
     has_ffmpeg = ffmpeg_loc is not None
 
-    # Bulut için optimize edilmiş ayarlar
+    # --- GÜNCELLENMİŞ BULUT AYARLARI ---
     ydl_opts = {
         'outtmpl': outtmpl,
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
-        'force_ipv4': True,
-        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'force_ipv4': True, # Bağlantı kararlılığı için önemli
+        'legacyserverconnect': True, # Instagram SSL hatasını azaltır
+        # User-Agent'ı kaldırdık, yt-dlp otomatik en iyisini seçsin.
     }
 
     if has_ffmpeg:
@@ -67,12 +67,12 @@ def download_video():
         else:
             ydl_opts.update({'format': 'bestaudio/best'})
     else:
-        # Video Modu (FFmpeg varsa birleştir, yoksa tek parça indir)
+        # Video Modu
         if has_ffmpeg:
             ydl_opts.update({
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                # Render.com'da işlemci zayıf olabilir, zorla convert etmek yerine sadece birleştir diyoruz.
                 'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
-                'postprocessor_args': ['-c:v', 'libx264', '-c:a', 'aac', '-pix_fmt', 'yuv420p']
             })
         else:
             ydl_opts.update({'format': 'best[ext=mp4]/best'})
@@ -83,18 +83,27 @@ def download_video():
             filename = ydl.prepare_filename(info)
             
             base, ext = os.path.splitext(filename)
+            # Bulutta dosya adı bazen değişebilir, kontrol ediyoruz
             final_file = filename
             
-            if has_ffmpeg and mode == 'audio':
-                 final_file = base + ".mp3"
-            elif has_ffmpeg and mode == 'video':
-                 final_file = base + ".mp4"
+            # Eğer convert edildiyse uzantı değişmiştir
+            possible_mp3 = base + ".mp3"
+            possible_mp4 = base + ".mp4"
+            
+            if os.path.exists(possible_mp3):
+                final_file = possible_mp3
+            elif os.path.exists(possible_mp4):
+                final_file = possible_mp4
             
         return send_file(final_file, as_attachment=True)
 
     except Exception as e:
-        print(f"Hata: {e}")
-        return jsonify({"error": f"Sunucu Hatası: {str(e)}"}), 500
+        print(f"Hata Detayı: {e}")
+        # Kullanıcıya daha net bir mesaj verelim
+        error_msg = str(e)
+        if "Sign in" in error_msg or "Login" in error_msg:
+            return jsonify({"error": "Instagram Giriş Duvarı: Bulut IP'si engellendi. Lütfen a-Shell (Yerel) versiyonunu kullanın."}), 500
+        return jsonify({"error": f"Sunucu Hatası: {error_msg}"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
