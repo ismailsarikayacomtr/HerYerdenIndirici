@@ -8,15 +8,17 @@ import shutil
 app = Flask(__name__)
 CORS(app)
 
+# BULUT İÇİN GEÇİCİ KLASÖR (Önemli: /tmp olmalı)
 DOWNLOAD_FOLDER = '/tmp/downloads'
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
 def get_ffmpeg_path():
-    return shutil.which("ffmpeg")
+    return shutil.which("ffmpeg") or "ffmpeg"
 
 @app.route('/')
 def home():
+    # index.html dosyasını templates klasöründen çağırır
     return render_template('index.html')
 
 @app.route('/download', methods=['POST'])
@@ -28,9 +30,9 @@ def download_video():
     if not url:
         return jsonify({"error": "Link yok!"}), 400
 
-    print(f"☁️ Bulut Talebi: {url}")
+    print(f"☁️ Bulut İndirme Başlıyor: {url}")
     
-    # Temizlik
+    # Temizlik (Disk dolmasın)
     for f in os.listdir(DOWNLOAD_FOLDER):
         try:
             os.remove(os.path.join(DOWNLOAD_FOLDER, f))
@@ -43,6 +45,7 @@ def download_video():
     ffmpeg_loc = get_ffmpeg_path()
     has_ffmpeg = ffmpeg_loc is not None
 
+    # Bulut için optimize edilmiş ayarlar
     ydl_opts = {
         'outtmpl': outtmpl,
         'quiet': True,
@@ -56,25 +59,22 @@ def download_video():
         ydl_opts['ffmpeg_location'] = ffmpeg_loc
 
     if mode == 'audio':
-        # FFmpeg varsa dönüştür, yoksa en iyi sesi indir
         if has_ffmpeg:
             ydl_opts.update({
                 'format': 'bestaudio/best',
                 'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}],
             })
         else:
-            ydl_opts.update({'format': 'bestaudio/best'}) # Ham ses
+            ydl_opts.update({'format': 'bestaudio/best'})
     else:
-        # Video Modu
+        # Video Modu (FFmpeg varsa birleştir, yoksa tek parça indir)
         if has_ffmpeg:
-            # FFmpeg varsa: 4K/1080p indir ve birleştir
             ydl_opts.update({
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
                 'postprocessor_args': ['-c:v', 'libx264', '-c:a', 'aac', '-pix_fmt', 'yuv420p']
             })
         else:
-            # FFmpeg yoksa: Tek parça en iyi formatı indir (Merge yapmaya çalışma yoksa hata verir)
             ydl_opts.update({'format': 'best[ext=mp4]/best'})
 
     try:
@@ -82,9 +82,7 @@ def download_video():
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             
-            # Dosya adı düzeltme
             base, ext = os.path.splitext(filename)
-            # Eğer audio modundaysak ve ffmpeg yoksa uzantı m4a/webm kalabilir, sorun değil iPhone açar.
             final_file = filename
             
             if has_ffmpeg and mode == 'audio':
@@ -99,5 +97,4 @@ def download_video():
         return jsonify({"error": f"Sunucu Hatası: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    # Yerelde test ederken
     app.run(host='0.0.0.0', port=10000)
