@@ -1,117 +1,78 @@
-from flask import Flask, request, send_file, jsonify, render_template
-from flask_cors import CORS
-import yt_dlp
-import os
-import shutil
-import time
-import socket
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Bulut İndirici</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #000; color: white; font-family: -apple-system, sans-serif; }
+        .glass { background: rgba(28, 28, 30, 0.8); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen px-6 py-10 pt-20">
+    <div class="mb-10 text-center">
+        <span class="text-purple-500 font-bold text-xs tracking-widest uppercase">CLOUD SERVER</span>
+        <h1 class="text-4xl font-bold mt-2">Her Yerden<br>İndirici</h1>
+    </div>
 
-# --- AYARLAR ---
-app = Flask(__name__)
-CORS(app)
+    <div class="glass rounded-2xl p-1 mb-6">
+        <input type="text" id="urlInput" placeholder="Link yapıştır..." class="w-full bg-transparent text-white p-4 text-lg outline-none text-center placeholder-gray-600">
+    </div>
 
-# İndirilenler klasörü
-DOWNLOAD_FOLDER = os.path.join(os.path.expanduser("~"), "Downloads", "MobileDownloads")
-if not os.path.exists(DOWNLOAD_FOLDER):
-    os.makedirs(DOWNLOAD_FOLDER)
+    <div class="grid grid-cols-2 gap-3 mb-8">
+        <button onclick="mode='video'; updateUI()" id="btnVideo" class="bg-[#3A3A3C] py-4 rounded-xl font-bold text-sm text-white">Video</button>
+        <button onclick="mode='audio'; updateUI()" id="btnAudio" class="bg-[#1C1C1E] py-4 rounded-xl font-bold text-sm text-gray-500">Ses</button>
+    </div>
 
-def get_local_ip():
-    """Mac'in yerel ağdaki IP adresini bulur."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(('10.255.255.255', 1))
-        IP = s.getsockname()[0]
-    except:
-        IP = '127.0.0.1'
-    finally:
-        s.close()
-    return IP
+    <div id="status" class="hidden mb-6 text-center text-sm text-gray-400 animate-pulse">Bulut sunucusu videoyu işliyor...</div>
 
-def get_ffmpeg_path():
-    return shutil.which("ffmpeg")
+    <button onclick="download()" id="dlBtn" class="w-full bg-purple-600 text-white font-bold py-5 rounded-2xl text-lg shadow-lg active:scale-95 transition-transform">İNDİR</button>
 
-@app.route('/')
-def home():
-    # index.html dosyasını templates klasöründen okur
-    return render_template('index.html')
+    <div class="mt-auto pt-8 text-center">
+        <p class="text-[10px] text-gray-600 font-medium">Powered by Cloud • @ismailsarikaya</p>
+    </div>
 
-@app.route('/download', methods=['POST'])
-def download_video():
-    data = request.json
-    url = data.get('url')
-    mode = data.get('mode', 'video') 
-    
-    if not url:
-        return jsonify({"error": "Link yok!"}), 400
-
-    print(f"📱 iPhone'dan talep: {url} ({mode})")
-
-    # Benzersiz dosya ismi
-    timestamp = int(time.time())
-    outtmpl = os.path.join(DOWNLOAD_FOLDER, f"Mobile_Clip_{timestamp}.%(ext)s")
-
-    # --- GÜÇLÜ İNDİRME AYARLARI (Masaüstü Sürümüyle Aynı) ---
-    ffmpeg_location = get_ffmpeg_path()
-    
-    # Instagram için iPhone taklidi, diğerleri için Desktop
-    if "instagram.com" in url:
-        user_agent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'
-    else:
-        user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-
-    ydl_opts = {
-        'outtmpl': outtmpl,
-        'ffmpeg_location': ffmpeg_location,
-        'quiet': True,
-        'no_warnings': True,
-        'nocheckcertificate': True,
-        'user_agent': user_agent,
-        'force_ipv4': True, # Bağlantı kararlılığı
-    }
-
-    if mode == 'audio':
-        ydl_opts.update({
-            'format': 'bestaudio/best',
-            'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}],
-        })
-    else:
-        # Video - Apple/QuickTime Uyumlu Render (H.264)
-        ydl_opts.update({
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'merge_output_format': 'mp4',
-            # Zorla H.264 yap (Siyah ekran sorununu çözer)
-            'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
-            'postprocessor_args': ['-c:v', 'libx264', '-c:a', 'aac', '-pix_fmt', 'yuv420p']
-        })
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            
-            # Uzantı kontrolü
-            base, ext = os.path.splitext(filename)
-            final_ext = ".mp3" if mode == 'audio' else ".mp4"
-            final_file = base + final_ext
-
-        # Dosyayı iPhone'a geri gönder (Attachment olarak)
-        return send_file(final_file, as_attachment=True, download_name=os.path.basename(final_file))
-
-    except Exception as e:
-        print(f"Hata: {e}")
-        return jsonify({"error": str(e)}), 500
-
-if __name__ == '__main__':
-    local_ip = get_local_ip()
-    print("\n" + "="*40)
-    print(f"🚀 MOBİL SUNUCU AKTİF!")
-    print(f"📡 iPhone'undan Safari'yi aç ve şu adrese git:")
-    print(f"👉 http://{local_ip}:5000")
-    print("="*40 + "\n")
-    
-    # 'templates' klasörü yoksa uyar
-    if not os.path.exists('templates'):
-        os.makedirs('templates')
-        print("⚠️ UYARI: 'templates' klasörü oluşturuldu. Lütfen index.html dosyasını içine koy!")
+    <script>
+        let mode = 'video';
+        function updateUI() {
+            document.getElementById('btnVideo').className = mode==='video' ? "bg-[#3A3A3C] py-4 rounded-xl font-bold text-sm text-white border border-white/10" : "bg-[#1C1C1E] py-4 rounded-xl font-bold text-sm text-gray-500";
+            document.getElementById('btnAudio').className = mode==='audio' ? "bg-[#3A3A3C] py-4 rounded-xl font-bold text-sm text-white border border-white/10" : "bg-[#1C1C1E] py-4 rounded-xl font-bold text-sm text-gray-500";
+        }
         
-    app.run(host='0.0.0.0', port=5000)
+        async function download() {
+            const url = document.getElementById('urlInput').value;
+            if(!url) return alert("Link yok!");
+            
+            document.getElementById('status').classList.remove('hidden');
+            document.getElementById('dlBtn').disabled = true;
+            document.getElementById('dlBtn').classList.add('opacity-50');
+            
+            try {
+                const res = await fetch('/download', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url, mode})
+                });
+                if(!res.ok) throw new Error("Hata");
+                const blob = await res.blob();
+                const link = document.createElement('a');
+                link.href = window.URL.createObjectURL(blob);
+                link.download = mode === 'video' ? 'video.mp4' : 'audio.mp3';
+                link.click();
+                document.getElementById('status').textContent = "✅ İndirme Başladı!";
+                document.getElementById('status').classList.remove('animate-pulse', 'text-gray-400');
+                document.getElementById('status').classList.add('text-green-500');
+            } catch(e) {
+                alert("Sunucu Hatası: Linki kontrol et.");
+                document.getElementById('status').classList.add('hidden');
+            }
+            document.getElementById('dlBtn').disabled = false;
+            document.getElementById('dlBtn').classList.remove('opacity-50');
+        }
+        updateUI();
+    </script>
+</body>
+</html>
