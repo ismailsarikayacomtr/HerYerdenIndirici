@@ -4,11 +4,12 @@ import yt_dlp
 import os
 import time
 import shutil
+import random
 
 app = Flask(__name__)
 CORS(app)
 
-# BULUT İÇİN GEÇİCİ KLASÖR
+# Geçici indirme klasörü
 DOWNLOAD_FOLDER = '/tmp/downloads'
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
@@ -44,15 +45,27 @@ def download_video():
     ffmpeg_loc = get_ffmpeg_path()
     has_ffmpeg = ffmpeg_loc is not None
 
-    # --- GÜNCELLENMİŞ BULUT AYARLARI ---
+    # --- ANTI-BOT AYARLARI ---
+    # YouTube'un veri merkezi IP'lerini engellemesini aşmak için
+    # 'android' istemcisini taklit ediyoruz.
+    
     ydl_opts = {
         'outtmpl': outtmpl,
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
-        'force_ipv4': True, # Bağlantı kararlılığı için önemli
-        'legacyserverconnect': True, # Instagram SSL hatasını azaltır
-        # User-Agent'ı kaldırdık, yt-dlp otomatik en iyisini seçsin.
+        'force_ipv4': True,
+        
+        # KRİTİK DEĞİŞİKLİK: User-Agent yerine Client Spoofing
+        'extractor_args': {
+            'youtube': {
+                # Android uygulaması gibi davran (En az engel yiyen yöntem)
+                'player_client': ['android', 'web'],
+                'player_skip': ['webport', 'tv']
+            }
+        },
+        # Bazen küçük bir bekleme süresi bot algısını kırar
+        'sleep_interval_requests': 1,
     }
 
     if has_ffmpeg:
@@ -71,7 +84,6 @@ def download_video():
         if has_ffmpeg:
             ydl_opts.update({
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-                # Render.com'da işlemci zayıf olabilir, zorla convert etmek yerine sadece birleştir diyoruz.
                 'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
             })
         else:
@@ -83,10 +95,9 @@ def download_video():
             filename = ydl.prepare_filename(info)
             
             base, ext = os.path.splitext(filename)
-            # Bulutta dosya adı bazen değişebilir, kontrol ediyoruz
             final_file = filename
             
-            # Eğer convert edildiyse uzantı değişmiştir
+            # Uzantı kontrolü
             possible_mp3 = base + ".mp3"
             possible_mp4 = base + ".mp4"
             
@@ -98,12 +109,16 @@ def download_video():
         return send_file(final_file, as_attachment=True)
 
     except Exception as e:
-        print(f"Hata Detayı: {e}")
-        # Kullanıcıya daha net bir mesaj verelim
         error_msg = str(e)
-        if "Sign in" in error_msg or "Login" in error_msg:
-            return jsonify({"error": "Instagram Giriş Duvarı: Bulut IP'si engellendi. Lütfen a-Shell (Yerel) versiyonunu kullanın."}), 500
-        return jsonify({"error": f"Sunucu Hatası: {error_msg}"}), 500
+        print(f"Hata Detayı: {error_msg}")
+        
+        # Kullanıcıya net mesaj verelim
+        if "Sign in" in error_msg:
+            return jsonify({"error": "YouTube Koruması: Bulut sunucusu engellendi. Bu linki a-Shell (iPhone Yerel) versiyonu ile indirmen gerekebilir."}), 500
+        elif "bot" in error_msg.lower():
+             return jsonify({"error": "Bot Algılandı: Lütfen biraz bekleyip tekrar deneyin."}), 500
+             
+        return jsonify({"error": f"Hata: {error_msg}"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
