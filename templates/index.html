@@ -1,0 +1,117 @@
+from flask import Flask, request, send_file, jsonify, render_template
+from flask_cors import CORS
+import yt_dlp
+import os
+import shutil
+import time
+import socket
+
+# --- AYARLAR ---
+app = Flask(__name__)
+CORS(app)
+
+# İndirilenler klasörü
+DOWNLOAD_FOLDER = os.path.join(os.path.expanduser("~"), "Downloads", "MobileDownloads")
+if not os.path.exists(DOWNLOAD_FOLDER):
+    os.makedirs(DOWNLOAD_FOLDER)
+
+def get_local_ip():
+    """Mac'in yerel ağdaki IP adresini bulur."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
+
+def get_ffmpeg_path():
+    return shutil.which("ffmpeg")
+
+@app.route('/')
+def home():
+    # index.html dosyasını templates klasöründen okur
+    return render_template('index.html')
+
+@app.route('/download', methods=['POST'])
+def download_video():
+    data = request.json
+    url = data.get('url')
+    mode = data.get('mode', 'video') 
+    
+    if not url:
+        return jsonify({"error": "Link yok!"}), 400
+
+    print(f"📱 iPhone'dan talep: {url} ({mode})")
+
+    # Benzersiz dosya ismi
+    timestamp = int(time.time())
+    outtmpl = os.path.join(DOWNLOAD_FOLDER, f"Mobile_Clip_{timestamp}.%(ext)s")
+
+    # --- GÜÇLÜ İNDİRME AYARLARI (Masaüstü Sürümüyle Aynı) ---
+    ffmpeg_location = get_ffmpeg_path()
+    
+    # Instagram için iPhone taklidi, diğerleri için Desktop
+    if "instagram.com" in url:
+        user_agent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'
+    else:
+        user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+    ydl_opts = {
+        'outtmpl': outtmpl,
+        'ffmpeg_location': ffmpeg_location,
+        'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
+        'user_agent': user_agent,
+        'force_ipv4': True, # Bağlantı kararlılığı
+    }
+
+    if mode == 'audio':
+        ydl_opts.update({
+            'format': 'bestaudio/best',
+            'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}],
+        })
+    else:
+        # Video - Apple/QuickTime Uyumlu Render (H.264)
+        ydl_opts.update({
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'merge_output_format': 'mp4',
+            # Zorla H.264 yap (Siyah ekran sorununu çözer)
+            'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
+            'postprocessor_args': ['-c:v', 'libx264', '-c:a', 'aac', '-pix_fmt', 'yuv420p']
+        })
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            
+            # Uzantı kontrolü
+            base, ext = os.path.splitext(filename)
+            final_ext = ".mp3" if mode == 'audio' else ".mp4"
+            final_file = base + final_ext
+
+        # Dosyayı iPhone'a geri gönder (Attachment olarak)
+        return send_file(final_file, as_attachment=True, download_name=os.path.basename(final_file))
+
+    except Exception as e:
+        print(f"Hata: {e}")
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    local_ip = get_local_ip()
+    print("\n" + "="*40)
+    print(f"🚀 MOBİL SUNUCU AKTİF!")
+    print(f"📡 iPhone'undan Safari'yi aç ve şu adrese git:")
+    print(f"👉 http://{local_ip}:5000")
+    print("="*40 + "\n")
+    
+    # 'templates' klasörü yoksa uyar
+    if not os.path.exists('templates'):
+        os.makedirs('templates')
+        print("⚠️ UYARI: 'templates' klasörü oluşturuldu. Lütfen index.html dosyasını içine koy!")
+        
+    app.run(host='0.0.0.0', port=5000)

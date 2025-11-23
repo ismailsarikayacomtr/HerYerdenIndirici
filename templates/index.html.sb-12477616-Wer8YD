@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>İndirici</title>
+    
+    <!-- IPHONE FULL SCREEN MODU -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="İndirici">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background-color: #000; 
+            color: white; 
+            -webkit-tap-highlight-color: transparent; 
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .glass { background: rgba(28, 28, 30, 0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        input { appearance: none; -webkit-appearance: none; }
+        
+        /* Animasyonlar */
+        .pulse-ring { animation: pulse-blue 2s infinite; }
+        @keyframes pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen px-6 py-4 bg-black bg-gradient-to-b from-gray-900 to-black selection:bg-blue-500">
+
+    <!-- Header -->
+    <div class="mt-12 mb-8 text-center space-y-1">
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 mb-4">
+            <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            <span class="text-blue-400 font-bold text-[10px] tracking-widest uppercase">CONNECTED</span>
+        </div>
+        <h1 class="text-4xl font-bold tracking-tight">Her Yerden<br>İndirici</h1>
+    </div>
+
+    <!-- Input Area -->
+    <div class="glass rounded-2xl p-1 mb-6 focus-within:ring-2 focus-within:ring-blue-500 transition-all shadow-2xl">
+        <input type="text" id="urlInput" placeholder="Link'i yapıştır..." 
+            class="w-full bg-transparent text-white p-5 text-lg outline-none placeholder-gray-600 text-center font-medium rounded-xl">
+    </div>
+
+    <!-- Mode Selection -->
+    <div class="bg-[#1C1C1E]/80 p-1.5 rounded-2xl flex mb-8 border border-white/5">
+        <button onclick="setMode('video')" id="btnVideo" class="flex-1 py-3 rounded-xl text-sm font-semibold bg-[#636366] text-white shadow-lg transition-all transform active:scale-95">
+            Video (MP4)
+        </button>
+        <button onclick="setMode('audio')" id="btnAudio" class="flex-1 py-3 rounded-xl text-sm font-semibold text-gray-400 transition-all transform active:scale-95">
+            Ses (MP3)
+        </button>
+    </div>
+
+    <!-- Status -->
+    <div id="statusArea" class="hidden mb-8 text-center">
+        <div class="inline-flex flex-col items-center justify-center px-6 py-4 rounded-2xl bg-[#1C1C1E] border border-white/10 w-full">
+            <div id="loadingSpinner" class="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+            <p id="statusText" class="text-sm text-gray-300 font-medium">Mac videoyu işliyor...</p>
+            <p id="statusSub" class="text-xs text-gray-500 mt-1">Lütfen bekleyiniz</p>
+        </div>
+    </div>
+
+    <!-- Action Button -->
+    <button onclick="startDownload()" id="mainBtn" class="w-full bg-blue-600 active:bg-blue-500 text-white font-bold py-5 rounded-2xl text-lg shadow-lg shadow-blue-600/20 transition-all active:scale-95 flex items-center justify-center gap-2 mt-auto mb-8">
+        İNDİR
+    </button>
+
+    <script>
+        let currentMode = 'video';
+
+        function setMode(mode) {
+            currentMode = mode;
+            const btnVideo = document.getElementById('btnVideo');
+            const btnAudio = document.getElementById('btnAudio');
+            
+            if(mode === 'video') {
+                btnVideo.className = "flex-1 py-3 rounded-xl text-sm font-semibold bg-[#3A3A3C] text-white shadow-lg transition-all transform active:scale-95 ring-1 ring-white/10";
+                btnAudio.className = "flex-1 py-3 rounded-xl text-sm font-semibold text-gray-500 transition-all transform active:scale-95";
+            } else {
+                btnAudio.className = "flex-1 py-3 rounded-xl text-sm font-semibold bg-[#3A3A3C] text-white shadow-lg transition-all transform active:scale-95 ring-1 ring-white/10";
+                btnVideo.className = "flex-1 py-3 rounded-xl text-sm font-semibold text-gray-500 transition-all transform active:scale-95";
+            }
+        }
+
+        async function startDownload() {
+            const url = document.getElementById('urlInput').value;
+            const statusArea = document.getElementById('statusArea');
+            const statusText = document.getElementById('statusText');
+            const mainBtn = document.getElementById('mainBtn');
+            const spinner = document.getElementById('loadingSpinner');
+
+            if (!url) {
+                statusArea.classList.remove('hidden');
+                spinner.classList.add('hidden');
+                statusText.textContent = "⚠️ Link girmeyi unuttun!";
+                statusText.className = "text-sm text-red-400 font-bold";
+                setTimeout(() => { statusArea.classList.add('hidden'); }, 2000);
+                return;
+            }
+
+            // UI Update
+            statusArea.classList.remove('hidden');
+            spinner.classList.remove('hidden');
+            statusText.textContent = "Mac üzerinde işleniyor...";
+            statusText.className = "text-sm text-gray-300 font-medium animate-pulse";
+            mainBtn.disabled = true;
+            mainBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            mainBtn.textContent = "İşleniyor...";
+
+            try {
+                const response = await fetch('/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url, mode: currentMode })
+                });
+
+                if (!response.ok) throw new Error('Hata oluştu');
+
+                const blob = await response.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                
+                // İndirmeyi tetikle
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = currentMode === 'video' ? `Video_${Date.now()}.mp4` : `Audio_${Date.now()}.mp3`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+
+                // Başarı
+                spinner.classList.add('hidden');
+                statusText.textContent = "✅ Dosya Hazır!";
+                statusText.className = "text-sm text-green-400 font-bold";
+                document.getElementById('statusSub').textContent = "Safari indirmelerine bak";
+
+            } catch (error) {
+                spinner.classList.add('hidden');
+                statusText.textContent = "❌ Hata: Mac açık mı?";
+                statusText.className = "text-sm text-red-400 font-bold";
+            } finally {
+                setTimeout(() => {
+                    mainBtn.disabled = false;
+                    mainBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    mainBtn.textContent = "İNDİR";
+                }, 2000);
+            }
+        }
+    </script>
+</body>
+</html>
